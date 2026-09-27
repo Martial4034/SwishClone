@@ -80,6 +80,17 @@ même session et du même dossier temporaire : un hôte sous bac à sable
   garantit d'une version à l'autre. Le confort manquant (gestes sur Claude
   en fenêtre étroite) ne vaut pas ce risque.
 
+- **Les fenêtres de l'hôte ne sont jamais interrogées par AX depuis le
+  tap** (corrigé en 0.1.5). Le test de cible tourne sur le thread du tap ;
+  sur une fenêtre de l'hôte lui-même, `AXUIElementCopyElementAtPosition`
+  faisait répondre l'hôte **sur ce thread**, et ses vues SwiftUI se
+  reconstruisaient hors du thread principal : Swift 6 arrêtait l'app
+  (relevé dans bran, en défilant dans ses réglages). `WindowStack` lit
+  d'abord la pile du serveur de fenêtres (~0,5 ms) et s'abstient quand une
+  fenêtre de l'hôte est devant. Les fenêtres des autres apps n'y comptent
+  qu'au niveau 0 : le Dock tient une fenêtre transparente plein écran
+  (niveau 20) que l'Accessibilité traverse.
+
 - **Curseur ↔ des fenêtres liées : API privée.** macOS ignore le curseur
   d'une app en arrière-plan ; mesuré par un prototype, sans elle le curseur
   restait la flèche. `BackgroundCursor` active

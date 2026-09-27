@@ -63,6 +63,15 @@ public enum GestureTarget {
     /// `nonisolated` : n'utilise que des appels AX, sûrs depuis n'importe
     /// quel thread — le tap de l'étape 5 l'appellera depuis le sien.
     public static func hitTest(at point: CGPoint, zoneHeight: Double) -> Target? {
+        // **Avant tout appel AX.** Sur une fenêtre de l'hôte, la question AX
+        // serait traitée par l'hôte lui-même, sur ce thread-ci : ses vues se
+        // reconstruiraient hors du thread principal, et l'app s'arrêterait.
+        // Vérifier le pid *après* (plus bas) est trop tard. Voir `WindowStack`.
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if WindowStack.isOwnWindowOnTop(at: point, in: onScreenWindows(), ownPID: ownPID) {
+            return nil
+        }
+
         let systemWide = AXUIElementCreateSystemWide()
         AXUIElementSetMessagingTimeout(systemWide, messagingTimeout)
 
@@ -72,7 +81,7 @@ public enum GestureTarget {
 
         var pid: pid_t = 0
         guard AXUIElementGetPid(hit, &pid) == .success,
-              pid != ProcessInfo.processInfo.processIdentifier else { return nil }
+              pid != ownPID else { return nil }
 
         // Le pid du Dock est relu à chaque geste plutôt que gardé : il change
         // quand le Dock redémarre, et la lecture ne coûte presque rien.
@@ -104,6 +113,24 @@ public enum GestureTarget {
             current = parent
         }
         return nil
+    }
+
+    /// La pile des fenêtres visibles, de l'avant vers l'arrière. Sûr depuis
+    /// n'importe quel thread : aucune app n'est interrogée.
+    static func onScreenWindows() -> [WindowStack.Window] {
+        let list = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+            as? [[String: Any]] ?? []
+        return list.compactMap { info in
+            guard let pid = info[kCGWindowOwnerPID as String] as? pid_t,
+                  let boundsInfo = info[kCGWindowBounds as String] as? NSDictionary,
+                  let bounds = CGRect(dictionaryRepresentation: boundsInfo) else { return nil }
+            return WindowStack.Window(
+                pid: pid,
+                bounds: bounds,
+                alpha: info[kCGWindowAlpha as String] as? Double ?? 1,
+                layer: info[kCGWindowLayer as String] as? Int ?? 0
+            )
+        }
     }
 
     // MARK: - Dock
