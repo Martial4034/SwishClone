@@ -112,6 +112,24 @@ direct, comme « Resize Adjacent Windows » de Swish.
   dissoute.
 - Logique pure et testée dans `LinkedWindows.swift` (Core).
 
+## Gestes un par un
+
+Chaque geste se coupe seul (`GestureSettings.disabledActions`, vide par
+défaut : tout est actif), comme dans Swish où l'on clique sur l'icône d'un
+geste pour l'activer ou le désactiver.
+
+- **Un geste coupé ne s'annonce pas** : ni aperçu, ni action ; sa séquence
+  se lit comme une séquence inconnue. Les autres gestes de la famille
+  restent actifs (↓ coupé : ↓↓ et ↓ puis → marchent toujours).
+- **Une famille entièrement coupée sur une cible n'y est plus capturée** :
+  « quitter » coupé, le pincement sur une icône du Dock revient au Dock.
+- **`GestureCatalog`** (Core) liste chaque geste — action, cible,
+  déclencheurs (`GestureTrigger.symbols` : « ← », « ↑↑ », « ↓ puis → ») —
+  pour qu'un hôte construise sa propre page sans recopier la table. Les
+  tests vérifient que chaque déclencheur listé mène bien à son action.
+- Les valeurs brutes de `GestureAction` sont des identifiants stables,
+  écrits dans les préférences (`com.swishclone.disabledActions`).
+
 ## Prérequis
 - Xcode Command Line Tools installés (`xcode-select --install`)
 - Pas besoin de l'app Xcode complète

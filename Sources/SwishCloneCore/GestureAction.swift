@@ -13,7 +13,12 @@ public enum GestureTargetKind: Equatable, Sendable {
 /// `AppController` pour une app), côté SwishGestures, qui la traduit. La
 /// machine à états et l'aperçu n'ont besoin que de savoir *quoi* montrer et
 /// *quoi* appliquer.
-public enum GestureAction: Equatable, Sendable {
+///
+/// **Les valeurs brutes sont des identifiants stables** : l'hôte les écrit
+/// dans ses préférences (les gestes désactivés). Renommer un cas est libre,
+/// changer sa valeur brute réactive en silence le geste chez qui l'avait
+/// coupé.
+public enum GestureAction: String, CaseIterable, Equatable, Sendable {
     case leftHalf
     case rightHalf
     case topHalf

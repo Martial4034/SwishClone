@@ -37,6 +37,12 @@ public struct GestureStateMachine: Sendable {
     public struct Configuration: Equatable, Sendable {
         public var swipeEnabled = true
         public var pinchEnabled = true
+        /// **Les gestes coupés un par un.** Un geste désactivé ne montre ni
+        /// aperçu ni action : sa séquence se lit comme une séquence inconnue.
+        /// Les autres gestes de la famille restent actifs (↓ coupé, ↓↓ et
+        /// ↓ puis → marchent toujours). Quand toute une famille est coupée
+        /// sur une cible, le geste n'y est plus capturé du tout.
+        public var disabledActions: Set<GestureAction> = []
         /// Amplitude cumulée, sur une étape, au-delà de laquelle une direction
         /// de swipe devient candidate.
         public var swipeThreshold: Double = 16
@@ -272,8 +278,9 @@ public struct GestureStateMachine: Sendable {
             // perdues) est abandonné sans action.
             show(nil, effects: &effects)
             guard configuration.swipeEnabled,
+                  GestureCatalog.hasEnabledAction(.swipe, disabled: configuration.disabledActions),
                   let kind = isOnTarget(),
-                  GestureSequence.accepts(.swipe, on: kind) else {
+                  GestureSequence.accepts(.swipe, on: kind, disabled: configuration.disabledActions) else {
                 state = .idle
                 return false
             }
@@ -298,7 +305,7 @@ public struct GestureStateMachine: Sendable {
             case let .swipe(t):
                 show(nil, effects: &effects)
                 let steps = t.steps + [t.candidate].compactMap { $0 }
-                if let action = GestureSequence.resolve(swipes: steps, on: t.kind) {
+                if let action = enabledAction(swipes: steps, on: t.kind) {
                     effects.append(.commit(action))
                 }
                 state = .swallowingMomentum
@@ -349,7 +356,7 @@ public struct GestureStateMachine: Sendable {
 
     private func preview(swipes steps: [SwipeDirection], on kind: GestureTargetKind) -> Preview? {
         guard steps.isEmpty == false else { return nil }
-        return GestureSequence.resolve(swipes: steps, on: kind).map(Preview.action) ?? .unrecognized
+        return enabledAction(swipes: steps, on: kind).map(Preview.action) ?? .unrecognized
     }
 
     // MARK: - Pincement
@@ -400,8 +407,9 @@ public struct GestureStateMachine: Sendable {
             // rien.
             guard lifted == false else { return false }
             guard configuration.pinchEnabled,
+                  GestureCatalog.hasEnabledAction(.pinch, disabled: configuration.disabledActions),
                   let kind = isOnTarget(),
-                  GestureSequence.accepts(.pinch, on: kind) else {
+                  GestureSequence.accepts(.pinch, on: kind, disabled: configuration.disabledActions) else {
                 state = .pinchPassThrough(lastEventAt: now, usesPhase: phase != nil)
                 return false
             }
@@ -428,15 +436,29 @@ public struct GestureStateMachine: Sendable {
     private mutating func finishPinch(_ p: PinchTracking, effects: inout [Effect]) {
         show(nil, effects: &effects)
         let steps = p.steps + [p.candidate].compactMap { $0 }
-        if let action = GestureSequence.resolve(pinches: steps, on: p.kind) {
+        if let action = enabledAction(pinches: steps, on: p.kind) {
             effects.append(.commit(action))
         }
         state = .idle
     }
 
+    /// La table, moins les gestes désactivés : utilisé pour l'aperçu **et**
+    /// pour l'action, pour qu'un geste coupé ne s'annonce jamais.
+    private func enabledAction(swipes steps: [SwipeDirection], on kind: GestureTargetKind) -> GestureAction? {
+        GestureSequence.resolve(swipes: steps, on: kind).flatMap(enabled)
+    }
+
+    private func enabledAction(pinches steps: [PinchDirection], on kind: GestureTargetKind) -> GestureAction? {
+        GestureSequence.resolve(pinches: steps, on: kind).flatMap(enabled)
+    }
+
+    private func enabled(_ action: GestureAction) -> GestureAction? {
+        configuration.disabledActions.contains(action) ? nil : action
+    }
+
     private func preview(pinches steps: [PinchDirection], on kind: GestureTargetKind) -> Preview? {
         guard steps.isEmpty == false else { return nil }
-        return GestureSequence.resolve(pinches: steps, on: kind).map(Preview.action) ?? .unrecognized
+        return enabledAction(pinches: steps, on: kind).map(Preview.action) ?? .unrecognized
     }
 
     /// L'échéance du silence de fin de pincement, pour les états qui en ont

@@ -45,6 +45,21 @@ struct SettingsView: View {
                     Toggle("Afficher l'aperçu pendant le geste", isOn: $settings.previewEnabled)
                     Toggle("Retour haptique", isOn: $settings.hapticsEnabled)
                     Toggle("Redimensionner les fenêtres voisines", isOn: $settings.linkedResizeEnabled)
+                    Section("Gestes, un par un") {
+                        ForEach(GestureCatalog.entries, id: \.action) { entry in
+                            Toggle(isOn: Binding(
+                                get: { settings.isEnabled(entry.action) },
+                                set: { settings.setEnabled(entry.action, $0) }
+                            )) {
+                                HStack {
+                                    Text(entry.action.label())
+                                    Spacer()
+                                    Text(entry.triggers[0].symbols + (entry.target == .dockApp ? " sur le Dock" : ""))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
                     Text("Deux fenêtres placées en moitiés complémentaires (gauche et droite, haut et bas) se redimensionnent ensemble en glissant leur bord commun.")
                         .font(.caption)
                         .foregroundStyle(.secondary)

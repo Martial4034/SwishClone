@@ -32,6 +32,7 @@ public final class GestureSettings: ObservableObject {
         static let previewEnabled = "com.swishclone.previewEnabled"
         static let hapticsEnabled = "com.swishclone.hapticsEnabled"
         static let linkedResizeEnabled = "com.swishclone.linkedResizeEnabled"
+        static let disabledActions = "com.swishclone.disabledActions"
     }
 
     /// Somme cumulée de scroll en dessous de laquelle un swipe est ignoré.
@@ -92,6 +93,36 @@ public final class GestureSettings: ObservableObject {
         didSet { defaults.set(linkedResizeEnabled, forKey: Key.linkedResizeEnabled) }
     }
 
+    /// **Les gestes coupés un par un** (voir `GestureCatalog`). Vide par
+    /// défaut : tout est actif. Écrit comme la liste triée des valeurs brutes,
+    /// pour que les préférences restent lisibles et stables.
+    @Published public var disabledActions: Set<GestureAction> {
+        didSet { defaults.set(Self.encode(disabledActions), forKey: Key.disabledActions) }
+    }
+
+    public func isEnabled(_ action: GestureAction) -> Bool {
+        disabledActions.contains(action) == false
+    }
+
+    public func setEnabled(_ action: GestureAction, _ enabled: Bool) {
+        if enabled {
+            disabledActions.remove(action)
+        } else {
+            disabledActions.insert(action)
+        }
+    }
+
+    /// Triée, pour qu'un même ensemble s'écrive toujours pareil.
+    nonisolated static func encode(_ actions: Set<GestureAction>) -> [String] {
+        actions.map(\.rawValue).sorted()
+    }
+
+    /// Une valeur inconnue (écrite par une version plus récente, ou abîmée)
+    /// est ignorée : le geste correspondant reste actif.
+    nonisolated static func decode(_ stored: Any?) -> Set<GestureAction> {
+        Set((stored as? [String] ?? []).compactMap(GestureAction.init(rawValue:)))
+    }
+
     private let defaults = UserDefaults.standard
 
     /// Les réglages dont la machine à états a besoin, figés en une valeur.
@@ -99,6 +130,7 @@ public final class GestureSettings: ObservableObject {
         var configuration = GestureStateMachine.Configuration()
         configuration.swipeEnabled = swipeEnabled
         configuration.pinchEnabled = pinchEnabled
+        configuration.disabledActions = disabledActions
         configuration.swipeThreshold = swipeThreshold
         configuration.pinchThreshold = pinchThreshold
         configuration.stepPause = stepPause
@@ -121,5 +153,6 @@ public final class GestureSettings: ObservableObject {
         previewEnabled = defaults.object(forKey: Key.previewEnabled) as? Bool ?? true
         hapticsEnabled = defaults.object(forKey: Key.hapticsEnabled) as? Bool ?? true
         linkedResizeEnabled = defaults.object(forKey: Key.linkedResizeEnabled) as? Bool ?? false
+        disabledActions = Self.decode(defaults.object(forKey: Key.disabledActions))
     }
 }

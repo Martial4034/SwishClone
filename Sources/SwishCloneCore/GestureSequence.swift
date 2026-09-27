@@ -10,16 +10,15 @@ public enum GestureSequence {
         case swipe, pinch
     }
 
-    /// Une famille de gestes a-t-elle au moins une action sur cette cible ?
-    /// Sinon, la machine ne capture pas le geste et le laisse à l'app (le
-    /// Dock, pour un swipe sur une icône) — à l'étape 5, un geste capturé
-    /// sera avalé.
-    public static func accepts(_ family: Family, on kind: GestureTargetKind) -> Bool {
-        switch (family, kind) {
-        case (_, .titlebar): return true
-        case (.pinch, .dockApp): return true
-        case (.swipe, .dockApp): return false
-        }
+    /// Une famille de gestes a-t-elle au moins une action **active** sur
+    /// cette cible ? Sinon, la machine ne capture pas le geste et le laisse à
+    /// l'app (le Dock, pour un swipe sur une icône ; la page, quand tous les
+    /// glissés sont désactivés) — à l'étape 5, un geste capturé sera avalé.
+    ///
+    /// Tiré du catalogue plutôt que d'une table à part : un geste ajouté au
+    /// catalogue ouvre sa cible, un geste désactivé la referme.
+    public static func accepts(_ family: Family, on kind: GestureTargetKind, disabled: Set<GestureAction> = []) -> Bool {
+        GestureCatalog.hasEnabledAction(family, on: kind, disabled: disabled)
     }
 
     /// L'état de l'enchaînement, rejoué étape par étape.

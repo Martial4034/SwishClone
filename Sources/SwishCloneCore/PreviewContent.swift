@@ -54,7 +54,15 @@ extension GestureStateMachine.Preview {
     /// l'affiche pas ; c'est son étiquette VoiceOver, et le texte des logs.
     public func label(appName: String? = nil) -> String {
         guard case let .action(action) = self else { return "Aucune action" }
-        switch action {
+        return action.label(appName: appName)
+    }
+}
+
+extension GestureAction {
+
+    /// Le nom de l'action, tel qu'un hôte l'affiche (aperçu, carte de geste).
+    public func label(appName: String? = nil) -> String {
+        switch self {
         case .leftHalf: return "Moitié gauche"
         case .rightHalf: return "Moitié droite"
         case .topHalf: return "Moitié haute"

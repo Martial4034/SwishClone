@@ -464,6 +464,66 @@ final class GestureStateMachineTests: XCTestCase {
         XCTAssertEqual(driver.commits, [.close], "la cible décide : fermer une fenêtre, pas quitter l'app")
     }
 
+    // MARK: - Gestes désactivés un par un
+
+    func testADisabledGestureNeitherPreviewsNorActs() {
+        var driver = Driver { $0.disabledActions = [.minimize] }
+        driver.scroll(.began)
+        driver.move(dy: 40)
+        XCTAssertEqual(driver.previews.last, .unrecognized, "un geste coupé ne s'annonce pas")
+        driver.scroll(.ended)
+        XCTAssertEqual(driver.commits, [])
+    }
+
+    func testOtherGesturesOfTheFamilyStillWork() {
+        var driver = Driver { $0.disabledActions = [.minimize] }
+        driver.scroll(.began)
+        driver.move(dy: 40)
+        driver.wait(0.35)
+        driver.move(dx: 40)
+        XCTAssertEqual(driver.previews.last, .action(.bottomRightQuarter))
+        driver.scroll(.ended)
+        XCTAssertEqual(driver.commits, [.bottomRightQuarter], "↓ coupé, ↓ puis → marche toujours")
+
+        var halves = Driver { $0.disabledActions = [.minimize] }
+        halves.scroll(.began)
+        halves.move(dy: 40)
+        halves.wait(0.35)
+        halves.move(dy: 40)
+        halves.scroll(.ended)
+        XCTAssertEqual(halves.commits, [.bottomHalf])
+    }
+
+    func testDisabledCloseLeavesFullScreen() {
+        var driver = Driver { $0.disabledActions = [.close] }
+        driver.pinch(to: [-0.05, -0.14])
+        driver.wait(0.2)
+        XCTAssertEqual(driver.commits, [])
+        driver.wait(0.5)
+        driver.pinch(to: [0.05, 0.15])
+        driver.wait(0.2)
+        XCTAssertEqual(driver.commits, [.toggleFullScreen])
+    }
+
+    func testDisabledQuitLeavesTheDockAlone() {
+        var driver = Driver(blocks: true) { $0.disabledActions = [.quitApp] }
+        driver.onTarget = .dockApp
+        driver.pinch(to: [-0.03, -0.08, -0.14])
+        driver.wait(0.2)
+        XCTAssertEqual(driver.commits, [])
+        XCTAssertEqual(driver.effects, [], "ni aperçu ni retour haptique")
+        XCTAssertEqual(Set(driver.dispositions), [.pass], "le Dock garde son pincement")
+    }
+
+    func testAllSwipesDisabledSkipsTheHitTest() {
+        let swipes = Set(GestureCatalog.entries.filter { $0.family == .swipe }.map(\.action))
+        var driver = Driver { $0.disabledActions = swipes }
+        driver.swipe(dx: 40)
+        XCTAssertEqual(driver.commits, [])
+        XCTAssertEqual(driver.hitTests, 0, "rien à faire : pas même un test de cible")
+        XCTAssertEqual(Set(driver.dispositions), [.pass])
+    }
+
     // MARK: - Remise à zéro
 
     func testResetAbandonsTheGestureWithoutActingAndHidesThePreview() {
