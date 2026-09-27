@@ -100,6 +100,55 @@ final class ComplementaryLayoutTests: XCTestCase {
         XCTAssertEqual(HalfZone.top.complement, .bottom)
     }
 
+    // MARK: - Recoller la voisine
+
+    func testTheTopHalfFollowsABottomHalfThatRoseAboveTheDock() {
+        // Moitié haute placée d'abord ; la basse, plus haute que demandé, a
+        // été remontée pour ne pas passer sous le Dock : elle chevauche.
+        let top = CGRect(x: 0, y: 25, width: 1440, height: 402)
+        let risen = CGRect(x: 0, y: 420, width: 1440, height: 410)
+        XCTAssertEqual(ComplementaryLayout.restuckFrame(for: .top, in: visible, current: top, neighbor: risen),
+                       CGRect(x: 0, y: 25, width: 1440, height: 395))
+    }
+
+    func testAGapIsClosedToo() {
+        // Terminal à droite, arrondi à sa grille : il commence à x = 727.
+        let left = CGRect(x: 0, y: 25, width: 720, height: 805)
+        let terminal = CGRect(x: 727, y: 25, width: 713, height: 805)
+        XCTAssertEqual(ComplementaryLayout.restuckFrame(for: .left, in: visible, current: left, neighbor: terminal),
+                       CGRect(x: 0, y: 25, width: 727, height: 805))
+    }
+
+    func testWindowsThatAlreadyTouchAreLeftAlone() {
+        let top = CGRect(x: 0, y: 25, width: 1440, height: 402)
+        let bottom = CGRect(x: 0, y: 427, width: 1440, height: 403)
+        XCTAssertNil(ComplementaryLayout.restuckFrame(for: .top, in: visible, current: top, neighbor: bottom))
+        XCTAssertNil(ComplementaryLayout.restuckFrame(for: .bottom, in: visible, current: bottom, neighbor: top))
+        let roundedBottom = CGRect(x: 0, y: 428, width: 1440, height: 402)
+        XCTAssertNil(ComplementaryLayout.restuckFrame(for: .top, in: visible, current: top, neighbor: roundedBottom), "1 pt : arrondi")
+    }
+
+    func testNoRestickingToTheTheoreticalHalf() {
+        // La voisine n'est plus au bord de l'écran, ou ne laisse que 21 % :
+        // recoller voudrait dire revenir au théorique, pas coller.
+        let left = CGRect(x: 0, y: 25, width: 720, height: 805)
+        let drifted = CGRect(x: 540, y: 25, width: 800, height: 805)
+        XCTAssertNil(ComplementaryLayout.restuckFrame(for: .left, in: visible, current: left, neighbor: drifted))
+        let hog = CGRect(x: 300, y: 25, width: 1140, height: 805)
+        XCTAssertNil(ComplementaryLayout.restuckFrame(for: .left, in: visible, current: left, neighbor: hog))
+    }
+
+    func testTheRightAndBottomHalvesAreRestuckToo() {
+        let wideLeft = CGRect(x: 0, y: 25, width: 760, height: 805)
+        let right = CGRect(x: 720, y: 25, width: 720, height: 805)
+        XCTAssertEqual(ComplementaryLayout.restuckFrame(for: .right, in: visible, current: right, neighbor: wideLeft),
+                       CGRect(x: 760, y: 25, width: 680, height: 805))
+        let shortTop = CGRect(x: 0, y: 25, width: 1440, height: 390)
+        let bottom = CGRect(x: 0, y: 427, width: 1440, height: 403)
+        XCTAssertEqual(ComplementaryLayout.restuckFrame(for: .bottom, in: visible, current: bottom, neighbor: shortTop),
+                       CGRect(x: 0, y: 415, width: 1440, height: 415))
+    }
+
     func testResultAlwaysStaysInsideTheUsableArea() {
         let occupants = [
             CGRect(x: 540, y: 25, width: 900, height: 805),
@@ -183,6 +232,17 @@ final class PlacementMemoryTests: XCTestCase {
         XCTAssertEqual(memory.occupant(of: .right, on: main)?.frame, rightFrame)
         memory.updateFrame(of: 99, to: .zero) // inconnue : sans effet
         XCTAssertEqual(memory.occupant(of: .right, on: main)?.frame, rightFrame)
+    }
+
+    func testWhereAWindowIsRecorded() {
+        var memory = Memory()
+        memory.record(10, in: .right, on: main, frame: rightFrame)
+        memory.record(11, in: .top, on: second, frame: .zero)
+        XCTAssertEqual(memory.placement(of: 10)?.zone, .right)
+        XCTAssertEqual(memory.placement(of: 10)?.screen, main)
+        XCTAssertEqual(memory.placement(of: 11)?.zone, .top)
+        XCTAssertEqual(memory.placement(of: 11)?.screen, second)
+        XCTAssertNil(memory.placement(of: 99))
     }
 
     func testForgetAndRemoveAll() {

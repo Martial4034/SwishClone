@@ -74,15 +74,26 @@ final class WindowLayoutTests: XCTestCase {
     func testHalves() {
         XCTAssertEqual(frame(.leftHalf), CGRect(x: 0, y: 25, width: 720, height: 805))
         XCTAssertEqual(frame(.rightHalf), CGRect(x: 720, y: 25, width: 720, height: 805))
-        XCTAssertEqual(frame(.topHalf), CGRect(x: 0, y: 25, width: 1440, height: 402.5))
-        XCTAssertEqual(frame(.bottomHalf), CGRect(x: 0, y: 427.5, width: 1440, height: 402.5))
+        XCTAssertEqual(frame(.topHalf), CGRect(x: 0, y: 25, width: 1440, height: 402))
+        XCTAssertEqual(frame(.bottomHalf), CGRect(x: 0, y: 427, width: 1440, height: 403))
+    }
+
+    func testHalvesSplitOnAWholePointAndTouchExactly() {
+        // 805 pt de haut : pas de 402,5 que chaque app arrondirait à sa façon.
+        let top = frame(.topHalf)!, bottom = frame(.bottomHalf)!
+        XCTAssertEqual(top.maxY, bottom.minY)
+        XCTAssertEqual(bottom.maxY, visible.maxY)
+        let odd = CGRect(x: 0, y: 25, width: 1441, height: 805)
+        let left = frame(.leftHalf, in: odd)!, right = frame(.rightHalf, in: odd)!
+        XCTAssertEqual(left.width, 720)
+        XCTAssertEqual(right, CGRect(x: 720, y: 25, width: 721, height: 805))
     }
 
     func testQuarters() {
-        XCTAssertEqual(frame(.topLeftQuarter), CGRect(x: 0, y: 25, width: 720, height: 402.5))
-        XCTAssertEqual(frame(.topRightQuarter), CGRect(x: 720, y: 25, width: 720, height: 402.5))
-        XCTAssertEqual(frame(.bottomLeftQuarter), CGRect(x: 0, y: 427.5, width: 720, height: 402.5))
-        XCTAssertEqual(frame(.bottomRightQuarter), CGRect(x: 720, y: 427.5, width: 720, height: 402.5))
+        XCTAssertEqual(frame(.topLeftQuarter), CGRect(x: 0, y: 25, width: 720, height: 402))
+        XCTAssertEqual(frame(.topRightQuarter), CGRect(x: 720, y: 25, width: 720, height: 402))
+        XCTAssertEqual(frame(.bottomLeftQuarter), CGRect(x: 0, y: 427, width: 720, height: 403))
+        XCTAssertEqual(frame(.bottomRightQuarter), CGRect(x: 720, y: 427, width: 720, height: 403))
     }
 
     func testMaximizeFillsTheUsableAreaNotTheWholeScreen() {
@@ -102,7 +113,7 @@ final class WindowLayoutTests: XCTestCase {
     func testSecondaryScreenAboveKeepsItsOrigin() {
         let above = CGRect(x: 0, y: -1080, width: 1920, height: 1055)
         XCTAssertEqual(frame(.leftHalf, in: above), CGRect(x: 0, y: -1080, width: 960, height: 1055))
-        XCTAssertEqual(frame(.bottomRightQuarter, in: above), CGRect(x: 960, y: -552.5, width: 960, height: 527.5))
+        XCTAssertEqual(frame(.bottomRightQuarter, in: above), CGRect(x: 960, y: -553, width: 960, height: 528))
     }
 
     func testEveryFrameStaysInsideTheUsableArea() {

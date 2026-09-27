@@ -17,14 +17,17 @@ final class PreviewContentTests: XCTestCase {
 
     func testEveryZoneMatchesWindowLayout() {
         // L'aperçu ne doit jamais montrer autre chose que ce que fera le lever.
-        let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
+        // Même écran de référence que `PreviewContent`, ramené à l'unité.
+        let reference = CGRect(x: 0, y: 0, width: 1000, height: 1000)
         let actions: [GestureAction] = [
             .leftHalf, .rightHalf, .topHalf, .bottomHalf,
             .topLeftQuarter, .topRightQuarter, .bottomLeftQuarter, .bottomRightQuarter,
             .maximize, .centerReduced,
         ]
         for action in actions {
-            XCTAssertEqual(content(action), .zone(WindowLayout.frame(for: action, in: unit)!), "\(action)")
+            let frame = WindowLayout.frame(for: action, in: reference)!
+            let unit = CGRect(x: frame.minX / 1000, y: frame.minY / 1000, width: frame.width / 1000, height: frame.height / 1000)
+            XCTAssertEqual(content(action), .zone(unit), "\(action)")
         }
     }
 

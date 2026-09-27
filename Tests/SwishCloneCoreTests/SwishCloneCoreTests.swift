@@ -4,6 +4,6 @@ import XCTest
 final class SwishCloneCoreTests: XCTestCase {
 
     func testCoreModuleLoads() throws {
-        XCTAssertEqual(SwishCloneCore.version, "0.1.2")
+        XCTAssertEqual(SwishCloneCore.version, "0.1.3")
     }
 }

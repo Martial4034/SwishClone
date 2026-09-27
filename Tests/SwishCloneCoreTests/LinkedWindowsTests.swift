@@ -57,6 +57,26 @@ final class LinkedPairTests: XCTestCase {
         XCTAssertNil(LinkedPair.border(between: top, and: bottom, axis: .vertical))
     }
 
+    func testAWindowStillHoldsItsHalfNearItsOuterEdge() {
+        let visible = CGRect(x: 0, y: 25, width: 1440, height: 805)
+        XCTAssertTrue(LinkedPair.isAnchored(left, in: .left, of: visible))
+        XCTAssertTrue(LinkedPair.isAnchored(right, in: .right, of: visible))
+        // Terminal en moitié basse : 12 pt de vide au-dessus du Dock.
+        let terminal = CGRect(x: 0, y: 427, width: 1440, height: 391)
+        XCTAssertTrue(LinkedPair.isAnchored(terminal, in: .bottom, of: visible))
+        XCTAssertTrue(LinkedPair.isAnchored(top, in: .top, of: visible))
+    }
+
+    func testAWindowMovedAwayNoLongerHoldsItsHalf() {
+        let visible = CGRect(x: 0, y: 25, width: 1440, height: 805)
+        XCTAssertFalse(LinkedPair.isAnchored(left.offsetBy(dx: 25, dy: 0), in: .left, of: visible))
+        XCTAssertTrue(LinkedPair.isAnchored(left.offsetBy(dx: 24, dy: 0), in: .left, of: visible))
+        XCTAssertFalse(LinkedPair.isAnchored(right.offsetBy(dx: -25, dy: 0), in: .right, of: visible))
+        XCTAssertFalse(LinkedPair.isAnchored(top.offsetBy(dx: 0, dy: 25), in: .top, of: visible))
+        XCTAssertFalse(LinkedPair.isAnchored(bottom.offsetBy(dx: 0, dy: -25), in: .bottom, of: visible))
+        XCTAssertFalse(LinkedPair.isAnchored(right, in: .left, of: visible), "la moitié compte")
+    }
+
     func testSecondaryScreenAboveThePrimary() {
         let a = CGRect(x: 0, y: -1080, width: 800, height: 1055)
         let b = CGRect(x: 800, y: -1080, width: 1120, height: 1055)
@@ -120,54 +140,70 @@ final class LinkedResizeTests: XCTestCase {
         XCTAssertEqual(session.clampedBorder(1000), 1000, "mais peut grandir")
     }
 
-    // MARK: - Taille minimale découverte
+    // MARK: - Taille réellement prise
 
-    func testARefusedShrinkRevealsTheMinimum() {
-        var session = sideBySide
-        let requested = session.frames(borderAt: 1000).second // 440 pt demandés
-        let actual = CGRect(x: 1000, y: 25, width: 500, height: 805) // TextEdit en garde 500
-        XCTAssertTrue(session.learnMinimum(of: .second, requested: requested, actual: actual))
-        XCTAssertEqual(session.minimumSecond, 500)
-        XCTAssertEqual(session.clampedBorder(1000), 940, "la frontière s'arrête là où la droite garde 500 pt")
-        let (first, second) = session.frames(borderAt: 1000)
+    func testBothSizesTakenLeavesTheBorderWhereItIs() {
+        let requested = sideBySide.frames(borderAt: 900)
+        XCTAssertNil(sideBySide.settledBorder(requested: requested, actualFirst: requested.first, actualSecond: requested.second))
+        let rounded = requested.second.insetBy(dx: -0.5, dy: 0)
+        XCTAssertNil(sideBySide.settledBorder(requested: requested, actualFirst: requested.first, actualSecond: rounded), "arrondi")
+    }
+
+    func testAMinimumSizeStopsTheBorderAndTheOtherWindowFollows() {
+        // TextEdit à droite garde 500 pt quand on lui en demande 440 : il
+        // déborde de l'écran, calé à x = 1000.
+        let requested = sideBySide.frames(borderAt: 1000)
+        let textEdit = CGRect(x: 1000, y: 25, width: 500, height: 805)
+        let border = sideBySide.settledBorder(requested: requested, actualFirst: requested.first, actualSecond: textEdit)
+        XCTAssertEqual(border, 940)
+        let (first, second) = sideBySide.frames(borderAt: border!)
+        XCTAssertEqual(second, CGRect(x: 940, y: 25, width: 500, height: 805), "ramené dans son étendue, à sa taille")
         XCTAssertEqual(first.maxX, second.minX, "toujours collées")
-        XCTAssertEqual(second.width, 500)
     }
 
-    func testAnAcceptedSizeTeachesNothing() {
-        var session = sideBySide
-        let requested = session.frames(borderAt: 1000).second
-        XCTAssertFalse(session.learnMinimum(of: .second, requested: requested, actual: requested))
-        XCTAssertFalse(session.learnMinimum(of: .second, requested: requested,
-                                            actual: requested.insetBy(dx: -0.5, dy: 0)), "arrondi")
-        XCTAssertEqual(session.minimumSecond, LinkedResize.minimumExtent)
+    func testAWindowThatRoundsUpToItsGridSetsTheBorder() {
+        // Terminal à gauche, par crans de 7 pt : 713 demandés, 717 reçus.
+        let requested = sideBySide.frames(borderAt: 713)
+        let terminal = CGRect(x: 0, y: 25, width: 717, height: 805)
+        XCTAssertEqual(sideBySide.settledBorder(requested: requested, actualFirst: terminal, actualSecond: requested.second), 717)
     }
 
-    func testTheFirstWindowLearnsToo() {
-        var session = sideBySide
-        let requested = session.frames(borderAt: 200).first
-        XCTAssertTrue(session.learnMinimum(of: .first, requested: requested,
-                                           actual: CGRect(x: 0, y: 25, width: 350, height: 805)))
-        XCTAssertEqual(session.clampedBorder(200), 350)
+    func testAWindowThatRoundsDownClosesTheGap() {
+        let requested = sideBySide.frames(borderAt: 900)
+        let terminal = CGRect(x: 0, y: 25, width: 896, height: 805)
+        XCTAssertEqual(sideBySide.settledBorder(requested: requested, actualFirst: terminal, actualSecond: requested.second), 896)
     }
 
-    func testAMinimumIsNeverLearnedTwiceSmaller() {
-        var session = sideBySide
-        let requested = session.frames(borderAt: 1000).second
-        session.learnMinimum(of: .second, requested: requested, actual: CGRect(x: 1000, y: 25, width: 500, height: 805))
-        XCTAssertFalse(session.learnMinimum(of: .second, requested: requested,
-                                            actual: CGRect(x: 1000, y: 25, width: 480, height: 805)))
-        XCTAssertEqual(session.minimumSecond, 500)
+    func testTheWindowThatStayedBiggerWins() {
+        let requested = sideBySide.frames(borderAt: 1000)
+        let roundedDown = CGRect(x: 0, y: 25, width: 996, height: 805)
+        let refused = CGRect(x: 1000, y: 25, width: 500, height: 805)
+        XCTAssertEqual(sideBySide.settledBorder(requested: requested, actualFirst: roundedDown, actualSecond: refused), 940)
     }
 
-    func testWhenMinimumsLeaveNoRoomTheBorderDoesNotMove() {
-        var session = sideBySide
-        let r1 = session.frames(borderAt: 1000).second
-        session.learnMinimum(of: .second, requested: r1, actual: CGRect(x: 0, y: 25, width: 900, height: 805))
-        let r2 = session.frames(borderAt: 200).first
-        session.learnMinimum(of: .first, requested: r2, actual: CGRect(x: 0, y: 25, width: 900, height: 805))
-        XCTAssertEqual(session.clampedBorder(1000), 720)
-        XCTAssertEqual(session.clampedBorder(100), 720)
+    func testARoundedSizeDoesNotBlockTheNextMove() {
+        // Le bug constaté : Terminal arrondit vers le haut, et la frontière ne
+        // repartait plus vers lui. Le mouvement suivant, plus loin, doit
+        // toujours demander une taille plus petite.
+        let session = sideBySide
+        let first = session.frames(borderAt: 713)
+        _ = session.settledBorder(requested: first, actualFirst: CGRect(x: 0, y: 25, width: 717, height: 805),
+                                  actualSecond: first.second)
+        XCTAssertEqual(session.frames(borderAt: 700).first.width, 700)
+    }
+
+    func testTopAndBottomSettleToo() {
+        let top = CGRect(x: 0, y: 25, width: 1440, height: 400)
+        let bottom = CGRect(x: 0, y: 425, width: 1440, height: 405)
+        let session = LinkedResize(axis: .horizontal, first: top, second: bottom)
+        let requested = session.frames(borderAt: 600)
+        let tall = CGRect(x: 0, y: 600, width: 1440, height: 300)
+        XCTAssertEqual(session.settledBorder(requested: requested, actualFirst: requested.first, actualSecond: tall), 530)
+
+        // Seules les hauteurs comptent : la fenêtre du bas a pris la sienne,
+        // celle du haut s'est arrêtée 4 pt plus haut.
+        let shorterTop = CGRect(x: 0, y: 25, width: 1440, height: 571)
+        XCTAssertEqual(session.settledBorder(requested: requested, actualFirst: shorterTop, actualSecond: requested.second), 596)
     }
 
     // MARK: - Annulation

@@ -31,6 +31,7 @@ public final class GestureSettings: ObservableObject {
         static let cancelTimeout = "com.swishclone.cancelTimeout"
         static let previewEnabled = "com.swishclone.previewEnabled"
         static let hapticsEnabled = "com.swishclone.hapticsEnabled"
+        static let linkedResizeEnabled = "com.swishclone.linkedResizeEnabled"
     }
 
     /// Somme cumulée de scroll en dessous de laquelle un swipe est ignoré.
@@ -84,6 +85,13 @@ public final class GestureSettings: ObservableObject {
         didSet { defaults.set(hapticsEnabled, forKey: Key.hapticsEnabled) }
     }
 
+    /// **Fenêtres liées** : le bord commun de deux moitiés complémentaires
+    /// se saisit à la souris pour redimensionner les deux à la fois. Éteint
+    /// par défaut tant qu'il n'est pas validé sur les apps courantes.
+    @Published public var linkedResizeEnabled: Bool {
+        didSet { defaults.set(linkedResizeEnabled, forKey: Key.linkedResizeEnabled) }
+    }
+
     private let defaults = UserDefaults.standard
 
     /// Les réglages dont la machine à états a besoin, figés en une valeur.
@@ -112,5 +120,6 @@ public final class GestureSettings: ObservableObject {
         cancelTimeout = defaults.object(forKey: Key.cancelTimeout) as? Double ?? 0.8
         previewEnabled = defaults.object(forKey: Key.previewEnabled) as? Bool ?? true
         hapticsEnabled = defaults.object(forKey: Key.hapticsEnabled) as? Bool ?? true
+        linkedResizeEnabled = defaults.object(forKey: Key.linkedResizeEnabled) as? Bool ?? false
     }
 }

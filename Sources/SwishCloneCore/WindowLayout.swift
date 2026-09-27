@@ -54,31 +54,39 @@ public enum WindowLayout {
 
     /// `nil` pour les actions qui ne sont pas un cadre (réduire, plein écran
     /// natif, fermer) : `WindowController` les traite à part.
+    ///
+    /// **Le partage tombe sur un point entier.** Une zone utile de 805 pt de
+    /// haut donnait deux moitiés de 402,5 : les apps arrondissent chacune de
+    /// leur côté (TextEdit prend 403 et dépasse d'un point vers le Dock), et
+    /// les deux moitiés ne se touchaient plus exactement. La première moitié
+    /// prend l'arrondi inférieur, la seconde le reste.
     public static func frame(for action: GestureAction, in visible: CGRect) -> CGRect? {
-        let halfWidth = visible.width / 2
-        let halfHeight = visible.height / 2
         let left = visible.minX
-        let right = visible.minX + halfWidth
+        let right = (visible.minX + visible.width / 2).rounded(.down)
         let top = visible.minY
-        let bottom = visible.minY + halfHeight
+        let bottom = (visible.minY + visible.height / 2).rounded(.down)
+        let firstWidth = right - left
+        let secondWidth = visible.maxX - right
+        let firstHeight = bottom - top
+        let secondHeight = visible.maxY - bottom
 
         switch action {
         case .leftHalf:
-            return CGRect(x: left, y: top, width: halfWidth, height: visible.height)
+            return CGRect(x: left, y: top, width: firstWidth, height: visible.height)
         case .rightHalf:
-            return CGRect(x: right, y: top, width: halfWidth, height: visible.height)
+            return CGRect(x: right, y: top, width: secondWidth, height: visible.height)
         case .topHalf:
-            return CGRect(x: left, y: top, width: visible.width, height: halfHeight)
+            return CGRect(x: left, y: top, width: visible.width, height: firstHeight)
         case .bottomHalf:
-            return CGRect(x: left, y: bottom, width: visible.width, height: halfHeight)
+            return CGRect(x: left, y: bottom, width: visible.width, height: secondHeight)
         case .topLeftQuarter:
-            return CGRect(x: left, y: top, width: halfWidth, height: halfHeight)
+            return CGRect(x: left, y: top, width: firstWidth, height: firstHeight)
         case .topRightQuarter:
-            return CGRect(x: right, y: top, width: halfWidth, height: halfHeight)
+            return CGRect(x: right, y: top, width: secondWidth, height: firstHeight)
         case .bottomLeftQuarter:
-            return CGRect(x: left, y: bottom, width: halfWidth, height: halfHeight)
+            return CGRect(x: left, y: bottom, width: firstWidth, height: secondHeight)
         case .bottomRightQuarter:
-            return CGRect(x: right, y: bottom, width: halfWidth, height: halfHeight)
+            return CGRect(x: right, y: bottom, width: secondWidth, height: secondHeight)
         case .maximize:
             return visible
         case .centerReduced:

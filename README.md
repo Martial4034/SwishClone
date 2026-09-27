@@ -80,6 +80,38 @@ même session et du même dossier temporaire : un hôte sous bac à sable
   garantit d'une version à l'autre. Le confort manquant (gestes sur Claude
   en fenêtre étroite) ne vaut pas ce risque.
 
+- **Curseur ↔ des fenêtres liées : API privée.** macOS ignore le curseur
+  d'une app en arrière-plan ; mesuré par un prototype, sans elle le curseur
+  restait la flèche. `BackgroundCursor` active
+  `CGSSetConnectionProperty(…, "SetsCursorInBackground", true)`, cherchée
+  à l'exécution : si un futur macOS la retire, on perd le curseur, sans
+  planter. C'est le seul appel privé de la bibliothèque, isolé pour être
+  facile à retirer.
+
+## Fenêtres liées
+
+Réglage « Redimensionner les fenêtres voisines » (`linkedResizeEnabled`,
+éteint par défaut). Deux fenêtres rangées par geste en moitiés
+complémentaires (gauche et droite, haut et bas) qui se touchent : leur bord
+commun se saisit à la souris et les redimensionne toutes les deux en
+direct, comme « Resize Adjacent Windows » de Swish.
+
+- **Une poignée** par paire (`LinkedResizeController`) : un panneau
+  invisible de 8 pt posé sur le bord commun, juste au-dessus de la plus
+  avancée des deux fenêtres — pas au-dessus de tout : une troisième fenêtre
+  qui recouvre le bord garde ses clics. Il reçoit le clic lui-même : ni tap
+  souris actif, ni combat avec la poignée native de macOS.
+- **La fenêtre qui rétrécit parle d'abord** : sa taille est écrite seule et
+  relue, et la frontière se recale sur ce qu'elle a pris (taille minimale
+  de TextEdit, grille de Terminal) avant de placer l'autre. Plancher de
+  120 pt par fenêtre.
+- **Échap** pendant le glissé : retour aux cadres d'avant. **⌘** (au clic
+  ou en cours de route) : seule la fenêtre au premier plan des deux suit,
+  les deux sont déliées.
+- Une fenêtre fermée pendant le glissé l'arrête proprement ; la paire est
+  dissoute.
+- Logique pure et testée dans `LinkedWindows.swift` (Core).
+
 ## Prérequis
 - Xcode Command Line Tools installés (`xcode-select --install`)
 - Pas besoin de l'app Xcode complète

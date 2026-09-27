@@ -85,6 +85,37 @@ public enum ComplementaryLayout {
         return share >= minimumShare ? result : theoretical
     }
 
+    /// **Où recoller la fenêtre de `zone` sur sa voisine**, qui vient de
+    /// prendre son cadre final (`neighbor`, dans la moitié d'en face) :
+    /// `nil` si elles se touchent déjà, ou si le recollage la ferait
+    /// retomber sur la moitié théorique (voisine partie, ou moins de 25 %).
+    ///
+    /// Le placement complémentaire cale une moitié sur sa voisine au moment
+    /// où on la place. Si c'est la voisine, placée ensuite, qui ne prend pas
+    /// exactement sa moitié — plus haute que demandé puis remontée pour ne
+    /// pas passer sous le Dock, ou arrondie à sa grille —, la première ne la
+    /// touche plus.
+    public static func restuckFrame(for zone: HalfZone, in visible: CGRect, current: CGRect, neighbor: CGRect) -> CGRect? {
+        let facing = innerEdge(of: neighbor, in: zone.complement)
+        guard abs(innerEdge(of: current, in: zone) - facing) > contactTolerance else { return nil }
+        let target = frame(for: zone, in: visible, occupant: neighbor)
+        guard abs(innerEdge(of: target, in: zone) - facing) <= contactTolerance else { return nil }
+        return target
+    }
+
+    /// En deçà, deux bords se touchent (arrondi au point).
+    static let contactTolerance: CGFloat = 1
+
+    /// Le bord d'une fenêtre tourné vers la moitié d'en face.
+    static func innerEdge(of frame: CGRect, in zone: HalfZone) -> CGFloat {
+        switch zone {
+        case .left: return frame.maxX
+        case .right: return frame.minX
+        case .top: return frame.maxY
+        case .bottom: return frame.minY
+        }
+    }
+
     /// L'occupant est-il toujours calé sur le bord extérieur de sa zone (le
     /// bord droit de l'écran pour une moitié droite) ? Sinon il n'occupe plus
     /// la zone, et son bord intérieur ne veut plus rien dire.

@@ -347,9 +347,11 @@ public enum WindowController {
                         // Le cadre constaté devient la référence du placement
                         // complémentaire (sans effet hors des moitiés).
                         placements.updateFrame(of: WindowRef(window), to: actual)
+                        restickComplement(of: window, to: actual, in: visible)
                         return
                     }
                     placements.updateFrame(of: WindowRef(window), to: corrected)
+                    restickComplement(of: window, to: corrected, in: visible)
                     debugLog("fenêtre hors de l'écran après l'action (\(actual)) — ramenée en \(corrected), taille inchangée")
                     animatedMoveAndResize(
                         window: window,
@@ -359,6 +361,32 @@ public enum WindowController {
                         height: corrected.height
                     )
                 }
+            }
+        }
+    }
+
+    /// **Recolle la moitié d'en face** sur le cadre que la fenêtre a
+    /// finalement pris (voir `ComplementaryLayout.restuckFrame`) : sans ça,
+    /// les deux ne se touchaient plus, et n'étaient donc plus liées.
+    ///
+    /// Une seule fois par relecture, sans relecture en retour : pas de
+    /// va-et-vient entre deux apps qui arrondiraient chacune.
+    private static func restickComplement(of window: AXUIElement, to final: CGRect, in visible: CGRect) {
+        guard let placement = placements.placement(of: WindowRef(window)) else { return }
+        let otherZone = placement.zone.complement
+        guard let other = placements.occupant(of: otherZone, on: placement.screen, excluding: WindowRef(window)),
+              let otherFrame = validOccupant(of: otherZone, on: placement.screen, excluding: window) else { return }
+        guard let target = ComplementaryLayout.restuckFrame(for: otherZone, in: visible,
+                                                            current: otherFrame, neighbor: final) else { return }
+
+        debugLog("moitié \(otherZone) recollée sur sa voisine : \(target) au lieu de \(otherFrame)")
+        placements.record(other.window, in: otherZone, on: placement.screen, frame: target)
+        animatedMoveAndResize(window: other.window.element, x: target.minX, y: target.minY,
+                              width: target.width, height: target.height)
+        let element = other.window.element
+        DispatchQueue.main.asyncAfter(deadline: .now() + GestureSettings.shared.animationDuration + 0.15) {
+            MainActor.assumeIsolated {
+                if let actual = frame(of: element) { placements.updateFrame(of: WindowRef(element), to: actual) }
             }
         }
     }
@@ -388,11 +416,15 @@ public enum WindowController {
         guard let primaryHeight = screens.first?.frame.height else { return nil }
         let frames = screens.map { ScreenGeometry.axRect(fromCocoa: $0.frame, primaryScreenHeight: primaryHeight) }
         guard let index = ScreenGeometry.screenIndex(for: windowFrame, among: frames) else { return nil }
-        let number = screens[index].deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
         return (
-            CGDirectDisplayID(number?.uint32Value ?? 0),
+            displayID(of: screens[index]),
             ScreenGeometry.axRect(fromCocoa: screens[index].visibleFrame, primaryScreenHeight: primaryHeight)
         )
+    }
+
+    private static func displayID(of screen: NSScreen) -> CGDirectDisplayID {
+        let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber
+        return CGDirectDisplayID(number?.uint32Value ?? 0)
     }
 
     // MARK: - Placement complémentaire
@@ -421,20 +453,114 @@ public enum WindowController {
     /// oublié au passage.
     private static func validOccupant(of zone: HalfZone, on screen: CGDirectDisplayID, excluding window: AXUIElement) -> CGRect? {
         guard let entry = placements.occupant(of: zone, on: screen, excluding: WindowRef(window)) else { return nil }
-        let element = entry.window.element
-        let actual = frame(of: element)
-        let valid = PlacementValidation.isStillPlaced(
-            recorded: entry.frame,
-            actual: actual,
-            isMinimized: boolAttribute(element, kAXMinimizedAttribute as CFString),
-            isFullScreen: boolAttribute(element, fullScreenAttributeName)
-        )
-        guard valid else {
+        guard let actual = currentFrameIfStillPlaced(entry) else {
             debugLog("occupant de la moitié \(zone) oublié : déplacé, fermé, réduit ou en plein écran")
             placements.forget(entry.window)
             return nil
         }
         return actual
+    }
+
+    /// Le cadre réel de la fenêtre mémorisée, si elle occupe toujours sa
+    /// zone. N'oublie rien : l'appelant décide.
+    private static func currentFrameIfStillPlaced(_ entry: PlacementMemory<WindowRef, CGDirectDisplayID>.Entry) -> CGRect? {
+        let element = entry.window.element
+        // Le cadre d'abord : une fenêtre déplacée (le cas courant) évite les
+        // deux autres lectures.
+        guard let actual = frame(of: element),
+              PlacementValidation.isStillPlaced(recorded: entry.frame, actual: actual,
+                                                isMinimized: false, isFullScreen: false),
+              boolAttribute(element, kAXMinimizedAttribute as CFString) == false,
+              boolAttribute(element, fullScreenAttributeName) == false else { return nil }
+        return actual
+    }
+
+    // MARK: - Fenêtres liées
+
+    /// Deux moitiés complémentaires d'un même écran, valides, redimensionnables
+    /// et qui se touchent : leur bord commun se saisit (`LinkedResizeController`).
+    struct LinkedWindowPair {
+        /// La fenêtre de gauche (ou du haut), puis celle de droite (ou du bas).
+        let first: AXUIElement
+        let second: AXUIElement
+        let firstFrame: CGRect
+        let secondFrame: CGRect
+        let border: LinkedBorder
+    }
+
+    /// Les paires liées de tous les écrans, lues maintenant. Aucune lecture
+    /// AX tant que rien n'est placé en moitié.
+    static func linkedPairs() -> [LinkedWindowPair] {
+        guard !placements.isEmpty, let primaryHeight = NSScreen.screens.first?.frame.height else { return [] }
+        let halves: [(HalfZone, HalfZone, LinkAxis)] = [(.left, .right, .vertical), (.top, .bottom, .horizontal)]
+        var pairs: [LinkedWindowPair] = []
+        for screen in NSScreen.screens {
+            let id = displayID(of: screen)
+            let visible = ScreenGeometry.axRect(fromCocoa: screen.visibleFrame, primaryScreenHeight: primaryHeight)
+            for (firstZone, secondZone, axis) in halves {
+                guard let a = placements.occupant(of: firstZone, on: id),
+                      let b = placements.occupant(of: secondZone, on: id),
+                      let frameA = currentFrameIfHolding(a.window.element, firstZone, of: visible),
+                      let frameB = currentFrameIfHolding(b.window.element, secondZone, of: visible),
+                      let border = LinkedPair.border(between: frameA, and: frameB, axis: axis),
+                      isResizable(a.window.element), isResizable(b.window.element) else { continue }
+                pairs.append(LinkedWindowPair(first: a.window.element, second: b.window.element,
+                                          firstFrame: frameA, secondFrame: frameB, border: border))
+            }
+        }
+        return pairs
+    }
+
+    /// Le cadre réel d'une fenêtre qui tient encore sa moitié (voir
+    /// `LinkedPair.isAnchored`), ni réduite ni en plein écran.
+    private static func currentFrameIfHolding(_ window: AXUIElement, _ zone: HalfZone, of visible: CGRect) -> CGRect? {
+        guard let actual = frame(of: window),
+              LinkedPair.isAnchored(actual, in: zone, of: visible),
+              boolAttribute(window, kAXMinimizedAttribute as CFString) == false,
+              boolAttribute(window, fullScreenAttributeName) == false else { return nil }
+        return actual
+    }
+
+    /// Après un glissé de frontière : les nouveaux cadres deviennent la
+    /// référence, la paire reste liée.
+    static func recordLinkedFrames(_ frames: [(AXUIElement, CGRect)]) {
+        for (window, frame) in frames { placements.updateFrame(of: WindowRef(window), to: frame) }
+    }
+
+    /// Une fenêtre fermée ou devenue illisible pendant un glissé.
+    static func forgetPlacement(of window: AXUIElement) {
+        placements.forget(WindowRef(window))
+    }
+
+    nonisolated static func isResizable(_ window: AXUIElement) -> Bool {
+        var settable: DarwinBoolean = false
+        return AXUIElementIsAttributeSettable(window, kAXSizeAttribute as CFString, &settable) == .success
+            && settable.boolValue
+    }
+
+    /// Écrit la taille seule : la fenêtre garde son origine.
+    static func setSize(_ size: CGSize, of window: AXUIElement) -> Bool {
+        var size = size
+        guard let value = AXValueCreate(.cgSize, &size) else { return false }
+        return AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, value) == .success
+    }
+
+    /// Écrit un cadre sans animation. Pour une fenêtre qui rétrécit, la
+    /// taille avant la position (voir `LinkedResize.resizesBeforeMoving`).
+    /// `false` si l'app a répondu par une erreur — fenêtre fermée, le plus
+    /// souvent.
+    static func setFrame(_ frame: CGRect, of window: AXUIElement, sizeFirst: Bool) -> Bool {
+        var position = frame.origin
+        var size = frame.size
+        guard let positionValue = AXValueCreate(.cgPoint, &position),
+              let sizeValue = AXValueCreate(.cgSize, &size) else { return false }
+        let writes: [(CFString, AXValue)] = sizeFirst
+            ? [(kAXSizeAttribute as CFString, sizeValue), (kAXPositionAttribute as CFString, positionValue)]
+            : [(kAXPositionAttribute as CFString, positionValue), (kAXSizeAttribute as CFString, sizeValue)]
+        for (attribute, value) in writes where AXUIElementSetAttributeValue(window, attribute, value) != .success {
+            return false
+        }
+        return true
     }
 
     private static func boolAttribute(_ element: AXUIElement, _ attribute: CFString) -> Bool {

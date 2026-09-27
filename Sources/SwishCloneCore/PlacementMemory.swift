@@ -54,6 +54,11 @@ public struct PlacementMemory<Window: Equatable, Screen: Hashable> {
         return entry
     }
 
+    /// La moitié et l'écran où la fenêtre est enregistrée, s'il y en a une.
+    public func placement(of window: Window) -> (zone: HalfZone, screen: Screen)? {
+        entries.first { $0.value.window == window }.map { ($0.key.zone, $0.key.screen) }
+    }
+
     public mutating func forget(_ window: Window) {
         entries = entries.filter { $0.value.window != window }
     }

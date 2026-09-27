@@ -4,7 +4,8 @@ import CoreGraphics
 /// annonce — sans AppKit, pour être testé.
 ///
 /// Le rectangle d'une zone vient de `WindowLayout.frame(for:in:)` appliqué à
-/// un écran unitaire : **le même calcul que l'action réelle**. L'aperçu ne
+/// un écran de référence, ramené à l'unité : **le même calcul que l'action
+/// réelle**. L'aperçu ne
 /// peut donc pas montrer autre chose que ce que fera le lever.
 public enum PreviewContent: Equatable, Sendable {
     /// La zone visée, dans un écran unitaire (0…1, origine en haut à gauche).
@@ -29,8 +30,14 @@ public enum PreviewContent: Equatable, Sendable {
         case .close: self = .light(.close)
         case .quitApp: self = .quitApp
         default:
-            let unit = CGRect(x: 0, y: 0, width: 1, height: 1)
-            self = WindowLayout.frame(for: action, in: unit).map(PreviewContent.zone) ?? .unrecognized
+            // Un écran de 1 000 points ramené à 1 : `WindowLayout` partage
+            // au point entier, ce qui n'aurait pas de sens sur 1 × 1.
+            let side: CGFloat = 1000
+            let reference = CGRect(x: 0, y: 0, width: side, height: side)
+            self = WindowLayout.frame(for: action, in: reference).map {
+                PreviewContent.zone(CGRect(x: $0.minX / side, y: $0.minY / side,
+                                           width: $0.width / side, height: $0.height / side))
+            } ?? .unrecognized
         }
     }
 }

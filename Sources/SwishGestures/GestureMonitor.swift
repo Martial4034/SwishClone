@@ -67,12 +67,14 @@ public enum GestureMonitor {
         ) { _ in
             MainActor.assumeIsolated { WindowController.resetPlacements() }
         }
+        LinkedResizeController.start()
         isRunning = true
     }
 
     public static func stop() {
         guard isRunning else { return }
         GestureEventTap.stop()
+        LinkedResizeController.stop()
         if let screenObserver { NotificationCenter.default.removeObserver(screenObserver) }
         screenObserver = nil
         WindowController.resetPlacements()

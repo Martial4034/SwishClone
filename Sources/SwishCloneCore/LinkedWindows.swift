@@ -47,6 +47,28 @@ public enum LinkedPair {
     /// En dessous, les fenêtres se font à peine face : pas de frontière.
     public static let minimumSpan: CGFloat = 40
 
+    /// Écart toléré entre une fenêtre et le bord extérieur de sa moitié.
+    /// Large : Terminal arrondit sa hauteur à la ligne de texte, et laisse
+    /// quelques points de vide sous une moitié basse.
+    public static let anchorTolerance: CGFloat = 24
+
+    /// **La fenêtre tient-elle encore sa moitié ?** Collée au bord extérieur
+    /// de sa zone (le bord gauche de l'écran pour une moitié gauche).
+    ///
+    /// Plus souple que `PlacementValidation`, qui exige le cadre exact
+    /// constaté après le placement : une app qui se réajuste un peu plus tard
+    /// (Terminal) aurait dissous la paire sans que rien ne bouge à l'écran —
+    /// la frontière cessait alors de répondre, puis remarchait après un
+    /// nouveau placement. Qu'elles se touchent encore, `border` le vérifie.
+    public static func isAnchored(_ frame: CGRect, in zone: HalfZone, of visible: CGRect) -> Bool {
+        switch zone {
+        case .left: return abs(frame.minX - visible.minX) <= anchorTolerance
+        case .right: return abs(frame.maxX - visible.maxX) <= anchorTolerance
+        case .top: return abs(frame.minY - visible.minY) <= anchorTolerance
+        case .bottom: return abs(frame.maxY - visible.maxY) <= anchorTolerance
+        }
+    }
+
     /// - Parameters:
     ///   - first: la fenêtre de gauche (frontière verticale) ou du haut.
     ///   - second: celle de droite ou du bas.
@@ -71,8 +93,10 @@ public enum LinkedPair {
 /// deux fenêtres restent donc dans leur étendue d'origine — donc dans la
 /// zone utile — sans avoir à la connaître.
 ///
-/// macOS n'expose pas la taille minimale d'une fenêtre : on la découvre en
-/// cours de route (`learnMinimum`), quand l'app refuse de rétrécir.
+/// Une app ne prend pas toujours la taille demandée : taille minimale
+/// (TextEdit), ou taille arrondie à sa grille (Terminal, au caractère près).
+/// macOS n'expose ni l'une ni l'autre : après chaque écriture, on relit, et
+/// la frontière se recale sur la taille réellement prise (`settledBorder`).
 public struct LinkedResize: Sendable {
 
     public enum Side: Sendable { case first, second }
@@ -81,15 +105,15 @@ public struct LinkedResize: Sendable {
     /// fenêtre, même si l'app l'accepterait : elle ne servirait plus à rien.
     public static let minimumExtent: CGFloat = 120
 
-    /// Écart, en points, au-delà duquel une taille reçue plus grande que la
-    /// taille demandée révèle une taille minimale.
-    public static let refusalTolerance: CGFloat = 1
+    /// Écart, en points, au-delà duquel la taille reçue n'est plus celle
+    /// demandée (en deçà : arrondi au point).
+    public static let sizeTolerance: CGFloat = 1
 
     public let axis: LinkAxis
     public let originalFirst: CGRect
     public let originalSecond: CGRect
-    public private(set) var minimumFirst: CGFloat
-    public private(set) var minimumSecond: CGFloat
+    public let minimumFirst: CGFloat
+    public let minimumSecond: CGFloat
 
     public init(axis: LinkAxis, first: CGRect, second: CGRect) {
         self.axis = axis
@@ -108,8 +132,7 @@ public struct LinkedResize: Sendable {
     }
 
     /// La frontière demandée, bornée pour que chaque fenêtre garde au moins
-    /// sa taille minimale connue. Si les minimums ne laissent aucune marge,
-    /// elle ne bouge pas.
+    /// le plancher.
     public func clampedBorder(_ proposed: CGFloat) -> CGFloat {
         let lower = originalFirst.minAlong(axis) + minimumFirst
         let upper = originalSecond.maxAlong(axis) - minimumSecond
@@ -136,23 +159,30 @@ public struct LinkedResize: Sendable {
         return (first, second)
     }
 
-    /// Compare la taille demandée à la taille reçue : si l'app a refusé de
-    /// descendre, sa taille reçue devient son minimum pour la suite du
-    /// glissé. Renvoie `true` si un minimum a été appris — les cadres sont
-    /// alors à recalculer.
-    @discardableResult
-    public mutating func learnMinimum(of side: Side, requested: CGRect, actual: CGRect) -> Bool {
-        let received = actual.extentAlong(axis)
-        guard received > requested.extentAlong(axis) + Self.refusalTolerance else { return false }
-        switch side {
-        case .first:
-            guard received > minimumFirst else { return false }
-            minimumFirst = received
-        case .second:
-            guard received > minimumSecond else { return false }
-            minimumSecond = received
-        }
-        return true
+    /// **Où la frontière s'est réellement posée**, d'après les tailles
+    /// relues après l'écriture : `nil` si les deux fenêtres ont pris la
+    /// taille demandée. Sinon, les cadres sont à réécrire pour cette
+    /// frontière, que la fenêtre récalcitrante accepte déjà — l'autre vient
+    /// s'y coller.
+    ///
+    /// **Rien n'est retenu d'un mouvement à l'autre.** Le mouvement suivant
+    /// redemande une taille d'après la souris : une app qui arrondit à sa
+    /// grille finit par passer au cran suivant, alors qu'un « minimum »
+    /// appris sur un simple arrondi bloquerait la frontière pour de bon
+    /// (constaté avec Terminal : on ne pouvait plus la ramener vers lui).
+    ///
+    /// Une fenêtre restée plus grande que demandé (minimum, ou arrondi vers
+    /// le haut) a priorité : c'est une contrainte, l'autre doit céder.
+    public func settledBorder(requested: (first: CGRect, second: CGRect), actualFirst: CGRect, actualSecond: CGRect) -> CGFloat? {
+        let extraFirst = actualFirst.extentAlong(axis) - requested.first.extentAlong(axis)
+        let extraSecond = actualSecond.extentAlong(axis) - requested.second.extentAlong(axis)
+        let borderFromFirst = originalFirst.minAlong(axis) + actualFirst.extentAlong(axis)
+        let borderFromSecond = originalSecond.maxAlong(axis) - actualSecond.extentAlong(axis)
+        if extraFirst > Self.sizeTolerance { return borderFromFirst }
+        if extraSecond > Self.sizeTolerance { return borderFromSecond }
+        if extraFirst < -Self.sizeTolerance { return borderFromFirst }
+        if extraSecond < -Self.sizeTolerance { return borderFromSecond }
+        return nil
     }
 
     /// **L'ordre des écritures** : la fenêtre qui rétrécit d'abord, celle
