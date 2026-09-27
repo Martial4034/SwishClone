@@ -57,4 +57,23 @@ public enum WindowStack {
         }
         return top?.pid == ownPID
     }
+
+    /// Une fenêtre visible de l'hôte contient-elle le point, **même cachée** ?
+    ///
+    /// Sans elle, l'élément système ne peut pas tomber sur l'hôte, quel que
+    /// soit l'ordre qu'il suit : le test AX habituel est sûr par construction.
+    public static func hasOwnWindow(at point: CGPoint, in windows: [Window], ownPID: Int32) -> Bool {
+        windows.contains { $0.pid == ownPID && $0.alpha > 0 && $0.bounds.contains(point) }
+    }
+
+    /// L'app de la première fenêtre ordinaire (couche 0) d'une autre app sous
+    /// le point. Sert quand une fenêtre de l'hôte est dessous : le test AX se
+    /// fait alors dans cette app seule, jamais dans l'élément système, qui
+    /// pourrait traverser jusqu'à l'hôte si l'ordre de la liste et celui d'AX
+    /// divergent.
+    public static func frontmostOtherOwner(at point: CGPoint, in windows: [Window], ownPID: Int32) -> Int32? {
+        windows.first { window in
+            window.pid != ownPID && window.layer == 0 && window.alpha > 0 && window.bounds.contains(point)
+        }?.pid
+    }
 }

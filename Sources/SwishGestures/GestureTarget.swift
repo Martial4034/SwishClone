@@ -67,16 +67,30 @@ public enum GestureTarget {
         // serait traitée par l'hôte lui-même, sur ce thread-ci : ses vues se
         // reconstruiraient hors du thread principal, et l'app s'arrêterait.
         // Vérifier le pid *après* (plus bas) est trop tard. Voir `WindowStack`.
+        //
+        // **Et jamais dans l'élément système quand une fenêtre de l'hôte est
+        // sous le point, même cachée.** L'ordre de la liste des fenêtres peut
+        // diverger de celui d'AX : bran a planté ainsi pendant les essais, sa
+        // fenêtre recouverte d'après la liste, et pourtant atteinte par
+        // l'élément système. Dans ce cas, le test se fait dans l'app de la
+        // fenêtre de devant, seule : le thread du tap ne peut plus interroger
+        // l'hôte, par construction. Sans fenêtre de l'hôte sous le point,
+        // rien ne change.
         let ownPID = ProcessInfo.processInfo.processIdentifier
-        if WindowStack.isOwnWindowOnTop(at: point, in: onScreenWindows(), ownPID: ownPID) {
-            return nil
+        let windows = onScreenWindows()
+        let scope: AXUIElement
+        if WindowStack.hasOwnWindow(at: point, in: windows, ownPID: ownPID) {
+            guard WindowStack.isOwnWindowOnTop(at: point, in: windows, ownPID: ownPID) == false,
+                  let other = WindowStack.frontmostOtherOwner(at: point, in: windows, ownPID: ownPID)
+            else { return nil }
+            scope = AXUIElementCreateApplication(other)
+        } else {
+            scope = AXUIElementCreateSystemWide()
         }
-
-        let systemWide = AXUIElementCreateSystemWide()
-        AXUIElementSetMessagingTimeout(systemWide, messagingTimeout)
+        AXUIElementSetMessagingTimeout(scope, messagingTimeout)
 
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(systemWide, Float(point.x), Float(point.y), &hit) == .success,
+        guard AXUIElementCopyElementAtPosition(scope, Float(point.x), Float(point.y), &hit) == .success,
               let hit else { return nil }
 
         var pid: pid_t = 0

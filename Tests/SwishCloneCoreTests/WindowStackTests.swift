@@ -82,4 +82,35 @@ final class WindowStackTests: XCTestCase {
     func testNothingUnderThePoint() {
         XCTAssertFalse(WindowStack.isOwnWindowOnTop(at: CGPoint(x: 10, y: 10), in: [], ownPID: own))
     }
+
+    // MARK: - Portée du test AX quand une fenêtre de l'hôte est dessous
+
+    func testHiddenOwnWindowIsStillUnderThePoint() {
+        let stack = [
+            window(other, CGRect(x: 0, y: 0, width: 1000, height: 800)),
+            window(own, CGRect(x: 100, y: 100, width: 400, height: 300)),
+        ]
+        XCTAssertTrue(WindowStack.hasOwnWindow(at: CGPoint(x: 200, y: 200), in: stack, ownPID: own))
+        XCTAssertFalse(WindowStack.hasOwnWindow(at: CGPoint(x: 700, y: 600), in: stack, ownPID: own))
+    }
+
+    func testTransparentOwnWindowDoesNotCount() {
+        let stack = [window(own, CGRect(x: 0, y: 0, width: 1000, height: 800), alpha: 0)]
+        XCTAssertFalse(WindowStack.hasOwnWindow(at: CGPoint(x: 10, y: 10), in: stack, ownPID: own))
+    }
+
+    func testFrontmostOtherOwnerSkipsTheDockOverlayAndOurs() {
+        let stack = [
+            dockOverlay,
+            window(own, CGRect(x: 0, y: 0, width: 1440, height: 30), layer: 1000),
+            window(other, CGRect(x: 0, y: 0, width: 1440, height: 805)),
+            window(own, CGRect(x: 0, y: 0, width: 1440, height: 805)),
+        ]
+        XCTAssertEqual(WindowStack.frontmostOtherOwner(at: CGPoint(x: 720, y: 10), in: stack, ownPID: own), other)
+    }
+
+    func testFrontmostOtherOwnerIsNilWithoutAnOrdinaryWindow() {
+        let stack = [dockOverlay, window(own, CGRect(x: 0, y: 0, width: 1440, height: 900))]
+        XCTAssertNil(WindowStack.frontmostOtherOwner(at: CGPoint(x: 720, y: 483), in: stack, ownPID: own))
+    }
 }
